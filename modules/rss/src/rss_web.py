@@ -178,7 +178,9 @@ class WebRSS:
         if date_field_key is None or date_field_key == "published":
             last_entry = await self.get_last_post(channel, url, filter_config, session)
             if isinstance(last_entry, RssMessage):
-                return [last_entry]
+                entry_id = await self._get_entry_id(last_entry)
+                if last_entry_id is None or entry_id != last_entry_id:
+                    return [last_entry]
             return []
         for entry in feed.entries:
             if len(posts_list) > 10:
@@ -189,9 +191,8 @@ class WebRSS:
                 # we know we can break because entries are sorted by most recent first
                 break
             entry_id = await self._get_entry_id(entry)
-            if last_entry_id is not None:
-                if entry_id == last_entry_id:
-                    continue
+            if last_entry_id is not None and entry_id == last_entry_id:
+                continue
             obj = await self._parse_entry(entry, feed, url, entry_date, channel)
             posts_list.append(obj)
         posts_list.reverse()

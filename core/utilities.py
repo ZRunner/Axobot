@@ -180,9 +180,13 @@ class Utilities(commands.Cog):
                     f"https://top.gg/api/bots/{self.bot.user.id}/check?userId={userid}",
                     headers={"Authorization": str(self.bot.secrets["dbl"])}
                 ) as r:
+                    if r.status == 404:
+                        pass
                     json = await r.json()
+                    if not isinstance(json, dict):
+                        raise ValueError("Invalid response from top.gg API: " + str(json))
                     if "error" in json:
-                        raise ValueError("Error while checking votes on top.gg: "+json["error"])
+                        raise ValueError("Error while checking votes on top.gg: " + json["error"])
                     if json["voted"]:
                         votes.append(("Discord Bots List", "https://top.gg/"))
             except Exception as err:

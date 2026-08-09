@@ -131,6 +131,7 @@ class InvitesTracker(commands.Cog):
                     synced_invites += await self.sync_guild_invites(guild)
             except Exception as err:
                 self.bot.dispatch("error", err)
+            await asyncio.sleep(0.2) # reduce spam on the Discord API
         self.log.info("Synced %s invites", synced_invites)
         try:
             emb = discord.Embed(

@@ -38,6 +38,7 @@
     },
     "discordstatus-exists": "There is currently one %{impact} incident in progress on Discord: %{title}",
     "discordstatus-impacts": {
+        "critical": "critical",
         "major": "major",
         "minor": "minor",
         "none": "without effect"

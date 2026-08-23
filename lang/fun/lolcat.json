@@ -38,6 +38,7 @@
     },
     "discordstatus-exists": "UwU Discord broke :sad_trumpet_noise: check more at %{title}",
     "discordstatus-impacts": {
+        "critical": "critical",
         "major": "major",
         "minor": "minor",
         "none": "without effect"

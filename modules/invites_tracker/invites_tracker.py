@@ -1,7 +1,7 @@
 import asyncio
 import logging
+from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import Sequence
 
 import discord
 from discord import app_commands
@@ -29,11 +29,11 @@ class InvitesTracker(commands.Cog):
     async def cog_unload(self):
         self.sync_all_guilds_invites.cancel() # pylint: disable=no-member
 
-    async def db_get_invites(self, guild_id: int) -> Sequence[TrackedInvite]:
-        "Get a list of tracked invites associated to a guild"
+    async def db_get_invites(self, guild_id: int) -> dict[str, TrackedInvite]:
+        "Get a map of tracked invites associated to a guild, indexed by invite code"
         query = "SELECT * FROM `invites_tracker` WHERE `guild_id` = %s AND `beta` = %s"
         async with self.bot.db_main.read(query, (guild_id, self.bot.beta)) as query_result:
-            return query_result # pyright: ignore[reportReturnType]
+            return {invite["invite_id"]: invite for invite in query_result} # pyright: ignore[reportReturnType]
 
     async def db_upsert_invite(self, guild_id: int, invite_id: str, user_id: int | None, creation_date: datetime | None,
                             usage_count: int):
@@ -66,20 +66,20 @@ class InvitesTracker(commands.Cog):
             pass
 
 
-    async def _get_guild_invites_with_vanity(self, guild: discord.Guild):
+    async def _get_guild_invites_with_vanity(self, guild: discord.Guild) -> AsyncIterator[discord.Invite]:
         "Get the guild invites, including the vanity invite if it exists"
-        guild_invites = await guild.invites()
+        for invite in await guild.invites():
+            yield invite
         try:
-            if vanity_invite := await guild.vanity_invite():
-                guild_invites.append(vanity_invite)
+            if "VANITY_URL" in guild.features and (vanity_invite := await guild.vanity_invite()):
+                yield vanity_invite
         except discord.Forbidden:
             pass
-        return guild_invites
 
     async def sync_guild_invites(self, guild: discord.Guild):
         "Sync the tracked invites with the current invites of a guild"
         count = 0
-        guild_invites = await self._get_guild_invites_with_vanity(guild)
+        guild_invites = [invite async for invite in self._get_guild_invites_with_vanity(guild)]
         # add/update existing invitations
         for invite in guild_invites:
             user_id = invite.inviter.id if invite.inviter else None
@@ -88,33 +88,23 @@ class InvitesTracker(commands.Cog):
             await self.db_upsert_invite(guild.id, invite.code, user_id, invite.created_at, invite.uses)
             count += 1
         # delete removed invitations
-        for tracked_invite in await self.db_get_invites(guild.id):
-            if not next((i for i in guild_invites if i.code == tracked_invite["invite_id"]), None):
-                await self.db_delete_invite(guild.id, tracked_invite["invite_id"])
+        tracked_invites = await self.db_get_invites(guild.id)
+        for invite_id in tracked_invites:
+            if not any((i.code == invite_id for i in guild_invites)):
+                await self.db_delete_invite(guild.id, invite_id)
                 count += 1
         return count
 
     async def check_invites_usage(self, guild: discord.Guild):
         "Detect which invite was just used, by comparing the stored usage with the current usage"
         tracked_invites = await self.db_get_invites(guild.id)
-        guild_invites = await self._get_guild_invites_with_vanity(guild)
-        # first, check if an invite was used exactly once
-        for tracked_invite in tracked_invites:
-            invite = next((i for i in guild_invites if i.code == tracked_invite["invite_id"]), None)
-            if invite is None or invite.uses is None:
+        async for guild_invite in self._get_guild_invites_with_vanity(guild):
+            tracked_invite = tracked_invites.get(guild_invite.code)
+            if tracked_invite is None or guild_invite.uses is None:
                 continue
-            if invite.uses == tracked_invite["last_count"] + 1:
-                await self.db_update_invite_count(guild.id, invite.code, invite.uses)
-                return (invite, tracked_invite)
-        # if not, check if an invite was used more than once
-        for tracked_invite in tracked_invites:
-            invite = next((i for i in guild_invites if i.code == tracked_invite["invite_id"]), None)
-            if invite is None or invite.uses is None:
-                continue
-            if invite.uses > tracked_invite["last_count"]:
-                await self.db_update_invite_count(guild.id, invite.code, invite.uses)
-                return (invite, tracked_invite)
-
+            if guild_invite.uses > tracked_invite["last_count"]:
+                await self.db_update_invite_count(guild.id, guild_invite.code, guild_invite.uses)
+                return (guild_invite, tracked_invite)
 
     async def is_tracker_enabled(self, guild_id: int) -> bool:
         return await self.bot.get_config(guild_id, "enable_invites_tracking") # pyright: ignore[reportReturnType]
@@ -131,6 +121,7 @@ class InvitesTracker(commands.Cog):
                     synced_invites += await self.sync_guild_invites(guild)
             except Exception as err:
                 self.bot.dispatch("error", err)
+            await asyncio.sleep(0.2) # reduce spam on the Discord API
         self.log.info("Synced %s invites", synced_invites)
         try:
             emb = discord.Embed(
@@ -281,7 +272,7 @@ class InvitesTracker(commands.Cog):
         view = TrackedInvitesPaginator(
             self.bot,
             interaction.user,
-            invites,
+            list(invites.values()),
             stop_label=_quit.capitalize()
         )
         await view.send_init(interaction)

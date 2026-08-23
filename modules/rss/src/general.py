@@ -91,6 +91,12 @@ async def check_filter(entry: FeedParserDict, filter_config: FeedFilterConfig) -
         return False
     return True
 
+async def get_entry_id(entry: FeedParserDict) -> str | None:
+    "Try to find the article ID or title"
+    for i in ["id", "title", "updated_parsed"]:
+        if value := entry.get(i):
+            return value
+
 @dataclass(slots=True)
 class EmbedInfo:
     "Information about an embed to send"
@@ -360,7 +366,7 @@ class FeedObject:
         self.channel_id: int = from_dict["channel"]
         self.type: FeedType = from_dict["type"]
         self.link: str = from_dict["link"]
-        self.date: datetime.datetime | None= from_dict["date"]
+        self.date: datetime.datetime | None = from_dict["date"]
         self.last_entry_id: str | None = from_dict["last_entry_id"]
         self.role_ids: list[str] = [role for role in from_dict["roles"].split(';') if role.isnumeric()]
         self.use_embed: bool = from_dict["use_embed"]

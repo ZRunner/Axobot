@@ -27,7 +27,7 @@ from core.formatutils import FormatUtils
 from docs import conf
 from modules.antiscam.model import update_unicode_maps
 from modules.antiscam.model.training_bayes import train_model
-from modules.rss.src.general import feed_parse
+from modules.rss.src.general import feed_parse, get_entry_id
 
 from .views.changelog_view import ChangelogView
 
@@ -881,7 +881,7 @@ Cette option affecte tous les serveurs"""
             ok_ = "<:greencheck:513105826555363348>"
             notok_ = "<:redcheck:513105827817717762>"
             nothing_ = "<:_nothing:446782476375949323>"
-            txt = ["**__Analyse :__**", '']
+            txt = ["**__Analysis:__**", '']
             if feed.status >= 400:
                 txt.append(f"{notok_} Status code: {feed.status}")
             if not url.startswith("https://"):
@@ -895,7 +895,7 @@ Cette option affecte tous les serveurs"""
                 txt.append(f":newspaper:  <{feed.feed['link']}>")
             else:
                 txt.append(":newspaper:  No 'link' var")
-            txt.append(f"Entrées : {len(feed.entries)}")
+            txt.append(f"Entries: {len(feed.entries)}")
             if len(feed.entries) > 0:
                 entry = feed.entries[0]
                 if "title" in entry:
@@ -914,6 +914,10 @@ Cette option affecte tous les serveurs"""
                     txt.append(nothing_+ok_+" updated_parsed")
                 else:
                     txt.append(nothing_+notok_+" date")
+                if entry_id := await get_entry_id(entry):
+                    txt.append(nothing_+ok_+f" id: `{entry_id}`")
+                else:
+                    txt.append(nothing_+notok_+" id")
                 if "author" in entry:
                     txt.append(nothing_+ok_+" author: "+entry["author"])
                 else:

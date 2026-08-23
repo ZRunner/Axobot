@@ -13,7 +13,7 @@ from feedparser.util import FeedParserDict
 
 from .convert_post_to_text import get_summary_from_entry, get_text_from_entry
 from .general import (FeedFilterConfig, FeedObject, RssMessage, check_filter,
-                      feed_parse)
+                      feed_parse, get_entry_id)
 
 if TYPE_CHECKING:
     from core.bot_classes import Axobot
@@ -100,12 +100,6 @@ class WebRSS:
         self.bot.dispatch("error", f"Invalid date type for entry {entry.get('title', 'Unknown')}: {type(entry_date)}")
         return None
 
-    async def _get_entry_id(self, entry: FeedParserDict) -> str | None:
-        "Try to find the article ID or title"
-        for i in ["id", "title", "updated_parsed"]:
-            if value := entry.get(i):
-                return value
-
     async def _parse_entry(self, entry: FeedParserDict, feed: FeedParserDict, url: str, date: Any, channel:"discord.abc.MessageableChannel"):
         "Parse a feed entry to get the relevant information and return a RssMessage object"
         if "link" in entry:
@@ -145,7 +139,7 @@ class WebRSS:
             url=link,
             title=title,
             date=date,
-            entry_id=await self._get_entry_id(entry),
+            entry_id=await get_entry_id(entry),
             author=author,
             channel=feed.feed["title"] if "title" in feed.feed else '?',
             image=img,
@@ -156,7 +150,7 @@ class WebRSS:
 
     async def get_last_post(self, channel:"discord.abc.MessageableChannel", url: str,
                             filter_config: FeedFilterConfig | None,
-                            session: aiohttp.ClientSession | None=None):
+                            session: aiohttp.ClientSession | None=None) -> str | RssMessage:
         "Get the last post from a web feed"
         feed = await self._get_feed(url, filter_config, session)
         if not feed:
@@ -189,7 +183,7 @@ class WebRSS:
             if entry_date is None or (entry_date - date).total_seconds() < self.min_time_between_posts:
                 # we know we can break because entries are sorted by most recent first
                 break
-            entry_id = await self._get_entry_id(entry)
+            entry_id = await get_entry_id(entry)
             if last_entry_id is not None and entry_id == last_entry_id:
                 continue
             obj = await self._parse_entry(entry, feed, url, entry_date, channel)

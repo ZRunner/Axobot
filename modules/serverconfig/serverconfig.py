@@ -27,7 +27,7 @@ class ServerConfig(commands.Cog):
         self.file = "serverconfig"
         self.cache = TTLCache[tuple[int, str], Any](maxsize=10_000, ttl=60) # 1min cache
         self.enable_caching = True
-        self.membercounter_pending: dict[int, int] = {}
+        self.membercounter_pending: dict[int, float] = {}
         self.embed_color = 0x3fb9ef
         self.log_color = 0x1b5fb1
         self.max_members_for_nicknames = 3_000
@@ -177,17 +177,14 @@ class ServerConfig(commands.Cog):
         "Update all pending membercounter channels"
         if not self.bot.database_online:
             return
-        i = 0
-        now = time.time()
+        success = 0
         for guild_id in await self.db_get_guilds_with_membercounter():
             if (guild := self.bot.get_guild(guild_id)) is None:
                 continue
-            if guild_id in self.membercounter_pending and self.membercounter_pending[guild_id] < now:
-                del self.membercounter_pending[guild.id]
             if await self.update_memberchannel(guild):
-                i += 1
-        if i > 0:
-            log_text = f"[MEMBERCOUNTER] {i} channels refreshed"
+                success += 1
+        if success > 0:
+            log_text = f"[MEMBERCOUNTER] {success} channels refreshed"
             emb = discord.Embed(description=log_text, color=5011628, timestamp=self.bot.utcnow())
             emb.set_author(name=self.bot.user, icon_url=self.bot.display_avatar)
             self.bot.log.info(log_text)
@@ -201,9 +198,8 @@ class ServerConfig(commands.Cog):
     async def update_memberchannel(self, guild: discord.Guild):
         "Update a membercounter channel for a specific guild"
         # If we already did an update recently: abort
-        if guild.id in self.membercounter_pending:
-            if self.membercounter_pending[guild.id] > time.time():
-                return False
+        if self.membercounter_pending.get(guild.id, 0) > time.monotonic():
+            return False
         channel = await self.get_option(guild.id, "membercounter")
         if channel is None:
             return False
@@ -213,13 +209,12 @@ class ServerConfig(commands.Cog):
         text = (await self.bot._(guild.id, "misc.membres")).capitalize()
         if lang == "fr":
             text += ' '
-        text += ": "
-        text += str(guild.member_count)
+        text += ": " + str(guild.member_count)
         if channel.name == text:
             return False
+        self.membercounter_pending[guild.id] = time.monotonic() + 5*60 # cooldown 5min
         try:
             await channel.edit(name=text, reason=await self.bot._(guild.id, "logs.reason.memberchan"))
-            self.membercounter_pending[guild.id] = round(time.time()) + 5*60 # cooldown 5min
             return True
         except (discord.Forbidden, discord.NotFound):
             pass

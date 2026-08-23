@@ -1307,7 +1307,7 @@ class Rss(commands.Cog):
         async with self.bot.db_main.write(query, tuple(val[1] for val in parsed_values) + (feed_id,)):
             pass
 
-    async def _update_feed_last_entry(self, feed_id: int, last_post_date: datetime.datetime, last_entry_id: str | None):
+    async def _update_feed_last_entry(self, feed_id: int, last_post_date: datetime.datetime | None, last_entry_id: str | None):
         "Update the last entry of a feed"
         if self.bot.zombie_mode:
             return
@@ -1402,6 +1402,8 @@ class Rss(commands.Cog):
         elif feed.type == "web":
             if feed.date is None:
                 objs = await self.web_rss.get_last_post(chan, feed.link, feed.filter_config, session)
+                if feed.last_entry_id is not None and isinstance(objs, RssMessage) and objs.entry_id == feed.last_entry_id:
+                    return True
             else:
                 objs = await self.web_rss.get_new_posts(chan, feed.link, feed.date, feed.filter_config,
                                                         feed.last_entry_id, session)
@@ -1459,7 +1461,7 @@ class Rss(commands.Cog):
                     break
             latest_post_date = obj.date
             latest_entry_id = obj.entry_id
-        if sent_messages > 0 and isinstance(latest_post_date, datetime.datetime):
+        if sent_messages > 0:
             await self._update_feed_last_entry(feed.feed_id, latest_post_date, latest_entry_id)
         if should_send_stats and sent_messages and (statscog := self.bot.get_cog("BotStats")):
             statscog.rss_stats["messages"] += sent_messages

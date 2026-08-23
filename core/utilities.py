@@ -181,7 +181,7 @@ class Utilities(commands.Cog):
                     headers={"Authorization": str(self.bot.secrets["dbl"])}
                 ) as r:
                     if r.status == 404:
-                        pass
+                        return votes
                     json = await r.json()
                     if not isinstance(json, dict):
                         raise ValueError("Invalid response from top.gg API: " + str(json))

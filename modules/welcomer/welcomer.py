@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime, timezone
 from typing import Literal
 
 import discord
@@ -27,7 +28,7 @@ class Welcomer(commands.Cog):
         self.join_cache = TTLCache[tuple[int, int], int](maxsize=50_000, ttl=90)
 
     @commands.Cog.listener()
-    async def on_member_join(self, member:discord.Member):
+    async def on_member_join(self, member: discord.Member):
         """Main function called when a member joins a server"""
         if not self.bot.database_online:
             return
@@ -42,9 +43,11 @@ class Welcomer(commands.Cog):
                 await self.check_owner_server(member)
                 await self.check_support(member)
                 await self.check_contributor(member)
+        if member.bot:
+            await self.db_register_join(member.id, member.guild.id, member.joined_at or self.bot.utcnow())
 
     @commands.Cog.listener()
-    async def on_member_update(self, before:discord.Member, after:discord.Member):
+    async def on_member_update(self, before: discord.Member, after: discord.Member):
         """Main function called when a member got verified in a community server"""
         if before.pending and not after.pending:
             if "MEMBER_VERIFICATION_GATE_ENABLED" in after.guild.features:
@@ -55,7 +58,7 @@ class Welcomer(commands.Cog):
 
 
     @commands.Cog.listener()
-    async def on_member_remove(self, member:discord.Member):
+    async def on_member_remove(self, member: discord.Member):
         """Fonction principale appelée lorsqu'un membre quitte un serveur"""
         if not self.bot.database_online:
             return
@@ -63,6 +66,24 @@ class Welcomer(commands.Cog):
             await serverconfig_cog.update_memberchannel(member.guild)
         if "MEMBER_VERIFICATION_GATE_ENABLED" not in member.guild.features or not member.pending:
             await self.send_msg(member, "leave")
+        if member.bot and not member.guild.unavailable:
+            await self.db_register_leave(member.id, member.guild.id)
+
+    async def db_register_join(self, user_id: int, guild_id: int, join_date: datetime):
+        """Register a new member joining a guild"""
+        if not self.bot.database_online:
+            return
+        query = "INSERT INTO `guild_membership_logs` (`user_id`, `guild_id`, `event_type`, `event_date`) VALUES (%s, %s, 'join', %s)"
+        async with self.bot.db_main.write(query, (user_id, guild_id, join_date.astimezone(timezone.utc))):
+            pass
+
+    async def db_register_leave(self, user_id: int, guild_id: int):
+        """Register a new member joining a guild"""
+        if not self.bot.database_online:
+            return
+        query = "INSERT INTO `guild_membership_logs` (`user_id`, `guild_id`, `event_type`, `event_date`) VALUES (%s, %s, 'leave', %s)"
+        async with self.bot.db_main.write(query, (user_id, guild_id, self.bot.utcnow())):
+            pass
 
     async def _is_raider(self, member: discord.Member):
         "Use the AntiRaid cog to check if a member has just been detected as a potential raider"

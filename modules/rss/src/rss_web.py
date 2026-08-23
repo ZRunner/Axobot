@@ -165,7 +165,7 @@ class WebRSS:
         entry_date = await self._get_entry_datetime(entry) or "Unknown"
         return await self._parse_entry(entry, feed, url, entry_date, channel)
 
-    async def get_new_posts(self, channel:"discord.abc.MessageableChannel", url: str, date: dt.datetime,
+    async def get_new_posts(self, channel: "discord.abc.MessageableChannel", url: str, date: dt.datetime,
                             filter_config: FeedFilterConfig | None,
                             last_entry_id: str | None=None,
                             session: aiohttp.ClientSession | None=None) -> list[RssMessage]:
@@ -176,11 +176,10 @@ class WebRSS:
         posts_list: list[RssMessage] = []
         date_field_key = await self._get_feed_date_key(feed.entries[0])
         if date_field_key is None or date_field_key == "published":
-            last_entry = await self.get_last_post(channel, url, filter_config, session)
-            if isinstance(last_entry, RssMessage):
-                entry_id = await self._get_entry_id(last_entry)
-                if last_entry_id is None or entry_id != last_entry_id:
-                    return [last_entry]
+            entry = await self.get_last_post(channel, url, filter_config, session)
+            if isinstance(entry, RssMessage):
+                if last_entry_id is None or entry.entry_id != last_entry_id:
+                    return [entry]
             return []
         for entry in feed.entries:
             if len(posts_list) > 10:
